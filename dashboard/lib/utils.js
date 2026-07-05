@@ -36,4 +36,40 @@ function isRateLimited(key, limit = 20, windowMs = 60_000) {
   return entry.count > limit;
 }
 
-module.exports = { generateLicenseKey, applyCors, isRateLimited };
+const OWNER_COOKIE_NAME = 'ks_owner';
+
+/**
+ * Reads the owner_token cookie from an incoming request, if present.
+ */
+function getOwnerTokenFromReq(req) {
+  const raw = req.headers.cookie || '';
+  const match = raw.split(';').map((p) => p.trim()).find((p) => p.startsWith(`${OWNER_COOKIE_NAME}=`));
+  return match ? decodeURIComponent(match.split('=')[1]) : null;
+}
+
+/**
+ * Ensures the response carries an owner_token cookie, generating a new
+ * random one if the request didn't already have one. Returns the token
+ * that should be used for this request (existing or freshly generated).
+ * Cookie is httpOnly (JS on the page can't read/steal it), 1 year expiry,
+ * SameSite=Lax (works for normal same-site navigation/fetch).
+ */
+function ensureOwnerToken(req, res) {
+  let token = getOwnerTokenFromReq(req);
+  if (!token) {
+    token = crypto.randomBytes(24).toString('hex');
+    res.setHeader(
+      'Set-Cookie',
+      `${OWNER_COOKIE_NAME}=${token}; Path=/; Max-Age=${60 * 60 * 24 * 365}; HttpOnly; SameSite=Lax`
+    );
+  }
+  return token;
+}
+
+module.exports = {
+  generateLicenseKey,
+  applyCors,
+  isRateLimited,
+  getOwnerTokenFromReq,
+  ensureOwnerToken,
+};

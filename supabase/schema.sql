@@ -7,17 +7,23 @@
 create extension if not exists "pgcrypto";
 
 -- ------------------------------------------------------------
--- apps: each app belongs to one authenticated user (owner)
+-- apps: each app belongs to one "owner" - identified by an opaque
+-- owner_token stored in a browser cookie. No accounts, no login.
+-- Anyone who holds the owner_token for an app can manage it; the
+-- token is never shown in the UI as anything but an internal cookie
+-- value, and all reads/writes to apps/tasks happen through the
+-- serverless API (using the service role key), which checks the
+-- cookie against apps.owner_token before allowing access.
 -- ------------------------------------------------------------
 create table if not exists apps (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references auth.users(id) on delete cascade,
+  owner_token text not null default encode(gen_random_bytes(24), 'hex'),
   name text not null,
   api_key text not null unique default encode(gen_random_bytes(24), 'hex'),
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_apps_owner on apps(owner_id);
+create index if not exists idx_apps_owner on apps(owner_token);
 
 -- ------------------------------------------------------------
 -- tasks: link-based steps a player must complete to earn a key
@@ -83,37 +89,14 @@ create index if not exists idx_keys_app on license_keys(app_id);
 -- ============================================================
 -- Row Level Security
 -- ============================================================
+-- There is no Supabase Auth user in this system - ownership is just an
+-- opaque cookie value (apps.owner_token) checked by server-side API
+-- routes. RLS stays ON but with NO policies for the anon/public role,
+-- which blocks the browser from talking to Supabase directly at all.
+-- Every read/write goes through /pages/api/* using the service role
+-- key, which bypasses RLS and does the owner_token check itself in code.
 alter table apps enable row level security;
 alter table tasks enable row level security;
 alter table key_sessions enable row level security;
 alter table task_completions enable row level security;
 alter table license_keys enable row level security;
-
--- Owners can fully manage their own apps
-create policy "owners manage own apps" on apps
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
-
--- Owners can manage tasks that belong to their apps
-create policy "owners manage own tasks" on tasks
-  for all using (
-    exists (select 1 from apps where apps.id = tasks.app_id and apps.owner_id = auth.uid())
-  ) with check (
-    exists (select 1 from apps where apps.id = tasks.app_id and apps.owner_id = auth.uid())
-  );
-
--- Owners can view sessions/keys tied to their apps (read-only dashboard stats)
-create policy "owners view own sessions" on key_sessions
-  for select using (
-    exists (select 1 from apps where apps.id = key_sessions.app_id and apps.owner_id = auth.uid())
-  );
-
-create policy "owners view own keys" on license_keys
-  for select using (
-    exists (select 1 from apps where apps.id = license_keys.app_id and apps.owner_id = auth.uid())
-  );
-
--- NOTE: All writes to tasks completion / session / key issuance / redemption
--- happen through Vercel serverless functions using the Supabase SERVICE ROLE
--- key (server-side only, bypasses RLS safely). The anon/public key used by
--- the browser dashboard only ever reads/writes apps+tasks owned by the
--- logged-in user, and reads (never writes) sessions/keys for stats.

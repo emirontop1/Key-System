@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '../../lib/supabaseClient';
 
 export default function AppDetail() {
   const router = useRouter();
@@ -9,6 +8,7 @@ export default function AppDetail() {
   const [app, setApp] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [waitSeconds, setWaitSeconds] = useState(15);
@@ -22,14 +22,15 @@ export default function AppDetail() {
 
   async function load() {
     setLoading(true);
-    const { data: appData } = await supabase.from('apps').select('*').eq('id', id).single();
-    const { data: taskData } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('app_id', id)
-      .order('order_index', { ascending: true });
-    setApp(appData);
-    setTasks(taskData || []);
+    const res = await fetch(`/api/apps/${id}`);
+    if (res.status === 404) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+    const data = await res.json();
+    setApp(data.app);
+    setTasks(data.tasks || []);
     setLoading(false);
   }
 
@@ -37,12 +38,10 @@ export default function AppDetail() {
     e.preventDefault();
     if (!title.trim() || !url.trim()) return;
     setSaving(true);
-    await supabase.from('tasks').insert({
-      app_id: id,
-      title: title.trim(),
-      url: url.trim(),
-      wait_seconds: Number(waitSeconds) || 15,
-      order_index: tasks.length,
+    await fetch(`/api/apps/${id}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title.trim(), url: url.trim(), wait_seconds: waitSeconds }),
     });
     setTitle('');
     setUrl('');
@@ -52,7 +51,7 @@ export default function AppDetail() {
   }
 
   async function removeTask(taskId) {
-    await supabase.from('tasks').delete().eq('id', taskId);
+    await fetch(`/api/apps/${id}/tasks?taskId=${taskId}`, { method: 'DELETE' });
     load();
   }
 
@@ -60,6 +59,17 @@ export default function AppDetail() {
     navigator.clipboard.writeText(text);
     setCopied(label);
     setTimeout(() => setCopied(''), 1500);
+  }
+
+  if (notFound) {
+    return (
+      <main className="container" style={{ paddingTop: 48 }}>
+        <p className="text-dim">
+          App not found (or it belongs to a different browser). {' '}
+          <a href="/dashboard">Back to dashboard</a>
+        </p>
+      </main>
+    );
   }
 
   if (loading || !app) return null;

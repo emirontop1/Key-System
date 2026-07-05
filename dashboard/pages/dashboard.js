@@ -1,34 +1,24 @@
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { supabase } from '../lib/supabaseClient';
 
+// No login, no session - the browser gets an anonymous owner cookie the
+// first time it hits any /api/apps* route (set automatically by the API).
+// This page just lists whatever apps that cookie owns.
 export default function Dashboard() {
-  const router = useRouter();
-  const [session, setSession] = useState(null);
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newAppName, setNewAppName] = useState('');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) {
-        router.replace('/');
-        return;
-      }
-      setSession(data.session);
-      loadApps();
-    });
+    loadApps();
   }, []);
 
   async function loadApps() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('apps')
-      .select('id, name, api_key, created_at')
-      .order('created_at', { ascending: false });
-    if (!error) setApps(data || []);
+    const res = await fetch('/api/apps');
+    const data = await res.json();
+    setApps(data.apps || []);
     setLoading(false);
   }
 
@@ -36,23 +26,17 @@ export default function Dashboard() {
     e.preventDefault();
     if (!newAppName.trim()) return;
     setCreating(true);
-    const { data: userData } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from('apps')
-      .insert({ name: newAppName.trim(), owner_id: userData.user.id });
+    const res = await fetch('/api/apps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newAppName.trim() }),
+    });
     setCreating(false);
-    if (!error) {
+    if (res.ok) {
       setNewAppName('');
       loadApps();
     }
   }
-
-  async function signOut() {
-    await supabase.auth.signOut();
-    router.replace('/');
-  }
-
-  if (!session) return null;
 
   return (
     <main className="container" style={{ paddingTop: 48, paddingBottom: 64 }}>
@@ -60,8 +44,13 @@ export default function Dashboard() {
         <div className="mono text-dim" style={{ fontSize: 13, letterSpacing: 1 }}>
           KEY-SYSTEM / DASHBOARD
         </div>
-        <button className="btn" onClick={signOut}>Sign out</button>
       </div>
+
+      <p className="text-dim" style={{ fontSize: 13, marginTop: -24, marginBottom: 24 }}>
+        No login - apps you create here are tied to this browser. Don't clear
+        cookies or you'll lose access to manage them (players redeeming keys
+        are unaffected either way).
+      </p>
 
       <form onSubmit={createApp} className="card" style={{ marginBottom: 32, display: 'flex', gap: 12 }}>
         <input
