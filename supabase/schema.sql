@@ -1,6 +1,19 @@
 -- ============================================================
 -- Key System - Database Schema
 -- Run this in the Supabase SQL Editor (Project > SQL Editor > New query)
+--
+-- Safe to re-run any time you pull a newer version of this file: every
+-- statement is idempotent (create table/column/index "if not exists"),
+-- so re-running never drops or duplicates anything.
+--
+-- Troubleshooting: if you get an error mentioning "owner_id" or
+-- "auth.users" when running this, your apps table was created by a very
+-- early (pre-cookie-auth) version of this schema. Run this first, then
+-- re-run the rest of this file:
+--
+--   alter table apps drop column if exists owner_id;
+--   alter table apps add column if not exists owner_token text
+--     not null default encode(gen_random_bytes(24), 'hex');
 -- ============================================================
 
 -- Enable extension for UUID generation
@@ -20,10 +33,16 @@ create table if not exists apps (
   owner_token text not null default encode(gen_random_bytes(24), 'hex'),
   name text not null,
   api_key text not null unique default encode(gen_random_bytes(24), 'hex'),
+  task_count int not null default 0, -- how many random tasks to show players; 0 = show all
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_apps_owner on apps(owner_token);
+
+-- Safety net: if this "apps" table was created by an earlier version of
+-- this schema (before task_count existed), add it now. No-op if it's
+-- already there.
+alter table apps add column if not exists task_count int not null default 0;
 
 -- ------------------------------------------------------------
 -- tasks: link-based steps a player must complete to earn a key
@@ -59,6 +78,12 @@ create table if not exists key_sessions (
 
 create index if not exists idx_sessions_token on key_sessions(session_token);
 create index if not exists idx_sessions_app on key_sessions(app_id);
+
+-- Safety net: add these columns if key_sessions was created by an
+-- earlier version of this schema, before random-task-subset support
+-- existed. No-op if they're already there.
+alter table key_sessions add column if not exists requested_count int not null default 0;
+alter table key_sessions add column if not exists assigned_task_ids uuid[] not null default '{}';
 
 -- ------------------------------------------------------------
 -- task_completions: which tasks in a session have been cleared

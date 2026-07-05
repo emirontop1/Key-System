@@ -7,7 +7,7 @@ export default function ClaimPage() {
   const router = useRouter();
   const { appId } = router.query;
 
-  const [phase, setPhase] = useState('loading'); // loading | choose_count | tasks | waiting | done | error
+  const [phase, setPhase] = useState('loading'); // loading | tasks | waiting | done | error
   const [appName, setAppName] = useState('');
   const [sessionToken, setSessionToken] = useState('');
   const [tasks, setTasks] = useState([]);
@@ -17,31 +17,12 @@ export default function ClaimPage() {
   const [log, setLog] = useState([]);
   const [licenseKey, setLicenseKey] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [totalAvailable, setTotalAvailable] = useState(null);
-  const [requestedCount, setRequestedCount] = useState(5);
   const startedAtRef = useRef(null);
 
   useEffect(() => {
     if (!appId) return;
-    // First, just peek at how many tasks this app has so the player can
-    // choose a sensible number - doesn't start a session yet.
-    fetchTaskCount();
+    startSession();
   }, [appId]);
-
-  async function fetchTaskCount() {
-    try {
-      const res = await fetch(`${API_BASE}/api/apps/${appId}/public-info`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'failed');
-      setAppName(data.name);
-      setTotalAvailable(data.taskCount);
-      setRequestedCount(Math.min(5, data.taskCount) || 1);
-      setPhase('choose_count');
-    } catch (err) {
-      setErrorMsg('Could not load this app. The link may be invalid.');
-      setPhase('error');
-    }
-  }
 
   function pushLog(line) {
     setLog((prev) => [...prev, line]);
@@ -50,11 +31,10 @@ export default function ClaimPage() {
   async function startSession() {
     setPhase('loading');
     try {
-      const clamped = Math.max(1, Math.min(requestedCount, totalAvailable || requestedCount));
       const res = await fetch(`${API_BASE}/api/session/start-by-app-id`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appId, requestedCount: clamped }),
+        body: JSON.stringify({ appId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'failed_to_start');
@@ -148,37 +128,6 @@ export default function ClaimPage() {
       {phase === 'error' && (
         <div className="card" style={{ borderColor: 'var(--danger)' }}>
           <p style={{ margin: 0 }}>{errorMsg}</p>
-        </div>
-      )}
-
-      {phase === 'choose_count' && (
-        <div className="card">
-          <p className="text-dim" style={{ marginTop: 0, fontSize: 13 }}>
-            This app has {totalAvailable} task{totalAvailable === 1 ? '' : 's'} available.
-            Choose how many you want to complete — a random selection of
-            that many will be picked for you.
-          </p>
-          <div className="field">
-            <label>How many tasks?</label>
-            <input
-              type="number"
-              min={1}
-              max={totalAvailable || 1}
-              value={requestedCount}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setRequestedCount(Number.isFinite(v) ? v : 1);
-              }}
-            />
-          </div>
-          <p className="text-dim" style={{ fontSize: 12, marginTop: -6 }}>
-            {requestedCount > (totalAvailable || 1)
-              ? `Locked to the maximum of ${totalAvailable}.`
-              : `\u00A0`}
-          </p>
-          <button className="btn btn-primary" style={{ width: '100%' }} onClick={startSession}>
-            Start
-          </button>
         </div>
       )}
 

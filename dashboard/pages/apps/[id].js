@@ -21,6 +21,9 @@ export default function AppDetail() {
   const [copied, setCopied] = useState('');
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [taskCountInput, setTaskCountInput] = useState(0);
+  const [savingCount, setSavingCount] = useState(false);
+  const [countSaved, setCountSaved] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -49,7 +52,28 @@ export default function AppDetail() {
     const data = await res.json();
     setApp(data.app);
     setTasks(data.tasks || []);
+    setTaskCountInput(data.app.task_count || 0);
     setLoading(false);
+  }
+
+  async function saveTaskCount() {
+    setSavingCount(true);
+    setCountSaved(false);
+    try {
+      const res = await fetch(`/api/apps/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_count: taskCountInput }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setApp(data.app);
+        setCountSaved(true);
+        setTimeout(() => setCountSaved(false), 1500);
+      }
+    } finally {
+      setSavingCount(false);
+    }
   }
 
   async function addTask(e) {
@@ -120,6 +144,32 @@ export default function AppDetail() {
             {copied === 'link' ? 'Copied' : 'Copy'}
           </button>
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 24 }}>
+        <label>How many tasks should players complete?</label>
+        <p className="text-dim" style={{ fontSize: 12, marginTop: -6, marginBottom: 10 }}>
+          A random subset of this size is picked from your task list below
+          for each player. Set to 0 to require all tasks.
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            type="number"
+            min={0}
+            max={tasks.length}
+            value={taskCountInput}
+            onChange={(e) => setTaskCountInput(Math.max(0, Number(e.target.value) || 0))}
+            style={{ maxWidth: 120 }}
+          />
+          <button className="btn btn-primary" disabled={savingCount} onClick={saveTaskCount}>
+            {savingCount ? 'Saving…' : countSaved ? 'Saved ✓' : 'Save'}
+          </button>
+        </div>
+        <p className="text-dim" style={{ fontSize: 12, marginTop: 8 }}>
+          {taskCountInput <= 0 || taskCountInput >= tasks.length
+            ? `Currently: all ${tasks.length} task(s) required.`
+            : `Currently: ${taskCountInput} random task(s) out of ${tasks.length} required.`}
+        </p>
       </div>
 
       <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Tasks</h2>

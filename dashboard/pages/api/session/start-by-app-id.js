@@ -16,17 +16,18 @@ function shuffle(arr) {
 
 /**
  * POST /api/session/start-by-app-id
- * Body: { appId: string, requestedCount?: number }
+ * Body: { appId: string }
  *
  * Used by the public /claim/[appId] page. Keyed by the app's public id,
  * never its Roblox-facing api_key (that stays secret, embedded only in
  * the game script, and is used solely by /api/verify).
  *
- * requestedCount: how many tasks the player wants to do. If omitted (or
- * >= total tasks), all tasks are used. Otherwise a random subset of that
- * size is picked and LOCKED into the session (assigned_task_ids) so the
- * player can't dodge hard tasks by refreshing, and can't be asked to
- * complete tasks outside the set they were shown.
+ * How many tasks to show is the APP OWNER's setting (apps.task_count),
+ * not something the player chooses. 0 (or a count >= total tasks) means
+ * "show all tasks." Otherwise a random subset of that size is picked and
+ * LOCKED into the session (assigned_task_ids) so the player can't dodge
+ * hard tasks by refreshing, and can't be asked to complete tasks outside
+ * the set they were shown.
  */
 export default async function handler(req, res) {
   applyCors(res);
@@ -38,12 +39,12 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'rate_limited' });
   }
 
-  const { appId, requestedCount } = req.body || {};
+  const { appId } = req.body || {};
   if (!appId) return res.status(400).json({ error: 'missing_app_id' });
 
   const { data: app, error: appErr } = await supabaseAdmin
     .from('apps')
-    .select('id, name')
+    .select('id, name, task_count')
     .eq('id', appId)
     .single();
 
@@ -60,12 +61,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'app_has_no_tasks' });
   }
 
-  // Clamp requested count into [1, total tasks] - this is the "lock to
-  // max if they ask for more than exist" behavior.
+  // task_count of 0 (or >= total) means "show all". Otherwise clamp into
+  // [1, total] - this is the "lock to max if the setting exceeds what
+  // exists" behavior.
   const total = allTasks.length;
-  let count = Number(requestedCount);
-  if (!Number.isFinite(count) || count < 1) count = total;
-  count = Math.min(count, total);
+  let count = Number(app.task_count) || 0;
+  if (count <= 0 || count >= total) count = total;
 
   const chosen = count >= total ? allTasks : shuffle(allTasks).slice(0, count);
   const chosenIds = chosen.map((t) => t.id);
