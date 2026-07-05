@@ -50,6 +50,8 @@ create table if not exists key_sessions (
   id uuid primary key default gen_random_uuid(),
   app_id uuid not null references apps(id) on delete cascade,
   session_token text not null unique default encode(gen_random_bytes(32), 'hex'),
+  requested_count int not null default 0, -- how many tasks the player asked for
+  assigned_task_ids uuid[] not null default '{}', -- the randomly-picked subset locked in for this session
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '2 hours'),
   completed boolean not null default false
@@ -86,6 +88,26 @@ create table if not exists license_keys (
 create index if not exists idx_keys_value on license_keys(key_value);
 create index if not exists idx_keys_app on license_keys(app_id);
 
+-- ------------------------------------------------------------
+-- redemptions: analytics snapshot captured at the moment a key is
+-- successfully verified by the Roblox client. Purely informational -
+-- never used for security decisions (the key's used/used_at columns
+-- on license_keys are still the single source of truth for whether a
+-- key is valid).
+-- ------------------------------------------------------------
+create table if not exists redemptions (
+  id uuid primary key default gen_random_uuid(),
+  app_id uuid not null references apps(id) on delete cascade,
+  key_id uuid references license_keys(id) on delete set null,
+  executor text, -- e.g. "Synapse X", "Roblox" (real client), etc - self-reported by the script
+  is_studio boolean not null default false,
+  player_name text,
+  account_age_days int,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_redemptions_app on redemptions(app_id, created_at desc);
+
 -- ============================================================
 -- Row Level Security
 -- ============================================================
@@ -100,3 +122,4 @@ alter table tasks enable row level security;
 alter table key_sessions enable row level security;
 alter table task_completions enable row level security;
 alter table license_keys enable row level security;
+alter table redemptions enable row level security;

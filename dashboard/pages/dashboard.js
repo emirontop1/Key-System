@@ -84,6 +84,13 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      <p
+        className="mono text-dim"
+        style={{ textAlign: 'center', fontSize: 11, letterSpacing: 0.5, marginTop: 40, opacity: 0.6 }}
+      >
+        NO EXPLOIT — WE MAKE THIS ONLY FOR STUDIO/GAME
+      </p>
     </main>
   );
 }

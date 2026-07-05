@@ -25,15 +25,17 @@ dashboard/              Next.js app - this is the ONLY thing you deploy to Verce
   pages/
     index.js            Redirects to /dashboard (no login step)
     dashboard.js         List / create apps (scoped to the owner cookie)
-    apps/[id].js          Manage one app: API key, tasks, claim link
-    claim/[appId].js       Public page players use to complete tasks + get a key
+    apps/[id].js          Manage one app: API key, tasks, claim link, analytics charts
+    claim/[appId].js       Public page: pick how many tasks, complete them, get a key
     api/
       apps/index.js               List/create apps for this browser's owner cookie
       apps/[id].js                 Get one app + its tasks (owner-cookie checked)
       apps/[id]/tasks.js           Add/remove tasks (owner-cookie checked)
-      verify.js                    Roblox calls this to redeem a key
-      session/start-by-app-id.js   Claim page starts a session
-      session/complete-task.js     Claim page marks one task done
+      apps/[id]/public-info.js     Public: app name + task count (for the claim page)
+      apps/[id]/analytics.js       Owner-cookie checked: executor/studio/age charts data
+      verify.js                    Roblox calls this to redeem a key (+ logs analytics)
+      session/start-by-app-id.js   Claim page starts a session, randomly assigns N tasks
+      session/complete-task.js     Claim page marks one assigned task done
       session/claim-key.js         Claim page requests the final key
   lib/
     supabaseAdmin.js    Server client (service role key, used only in /api)
@@ -43,8 +45,9 @@ supabase/
   schema.sql            Run this once in the Supabase SQL editor
 
 roblox/
-  KeySystemClient.lua    Drop into your Roblox game, calls /api/verify
-  ExampleUsage.lua       Example wiring to a TextBox + Button
+  KeySystemClient.lua      Reusable module - drop into your game, calls /api/verify
+  ExampleUsage.lua         Example wiring the module to a TextBox + Button GUI
+  AllInOneExample.lua      Single-file, no-setup demo - paste and run directly
 ```
 
 Only `dashboard/` gets deployed. Everything - the dashboard UI and the
@@ -94,7 +97,32 @@ No Google/OAuth setup needed - there's no login step at all.
    app's dashboard page).
 3. **Roblox Studio -> Game Settings -> Security -> Allow HTTP Requests**
    must be turned on, or `HttpService:RequestAsync` will fail.
-4. See `roblox/ExampleUsage.lua` for wiring it to a key-entry GUI.
+4. See `roblox/ExampleUsage.lua` for wiring it to a key-entry GUI, or
+   `roblox/AllInOneExample.lua` for a single paste-and-run script with
+   no setup - it builds its own on-screen key-entry box in code.
+
+## Random task selection
+
+Players don't see every task you've added. On the claim page, they
+choose how many tasks they want to complete; the backend picks that
+many at random from the app's full task list (locking in that exact
+subset in `key_sessions.assigned_task_ids` so it can't be changed by
+refreshing or replayed against). If a player asks for more tasks than
+exist, the request is clamped to the total available. This means you
+can add 15 tasks total but only require players to complete, say, 5 of
+them - a different random 5 each time.
+
+## Analytics
+
+Every time `/api/verify` accepts a key, the Roblox script sends a few
+additional fields with the request: a best-effort executor name (self-
+reported - reports `"Roblox"` on an unmodified client), whether the
+call came from Studio, the player's display name, and their account
+age in days. This is stored in the `redemptions` table and charted on
+each app's dashboard page - executor breakdown, Studio vs. live game,
+and account-age distribution, plus a table of recent redemptions. None
+of this affects whether a key is accepted; it's purely for your own
+visibility into who's using your keys.
 
 ## How a key gets used up exactly once
 

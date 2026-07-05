@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     return res.status(429).json({ valid: false, error: 'rate_limited' });
   }
 
-  const { appApiKey, key } = req.body || {};
+  const { appApiKey, key, executor, isStudio, playerName, accountAgeDays } = req.body || {};
   if (!appApiKey || !key) {
     return res.status(400).json({ valid: false, error: 'missing_fields' });
   }
@@ -58,6 +58,23 @@ export default async function handler(req, res) {
 
   if (updateErr || !updated) {
     return res.status(409).json({ valid: false, error: 'key_already_used' });
+  }
+
+  // Analytics is best-effort and informational only - it never affects
+  // whether the key is accepted. All fields are optional and self-reported
+  // by the Roblox script; a failure here must not fail the verify response,
+  // since the player has already validly redeemed their key at this point.
+  try {
+    await supabaseAdmin.from('redemptions').insert({
+      app_id: app.id,
+      key_id: keyRow.id,
+      executor: executor ? String(executor).slice(0, 100) : null,
+      is_studio: !!isStudio,
+      player_name: playerName ? String(playerName).slice(0, 100) : null,
+      account_age_days: Number.isFinite(Number(accountAgeDays)) ? Number(accountAgeDays) : null,
+    });
+  } catch (_) {
+    // swallow - analytics must never break verification
   }
 
   return res.status(200).json({ valid: true });

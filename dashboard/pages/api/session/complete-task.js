@@ -26,13 +26,22 @@ export default async function handler(req, res) {
 
   const { data: session, error: sessErr } = await supabaseAdmin
     .from('key_sessions')
-    .select('id, app_id, completed, expires_at')
+    .select('id, app_id, completed, expires_at, assigned_task_ids')
     .eq('session_token', sessionToken)
     .single();
 
   if (sessErr || !session) return res.status(404).json({ error: 'session_not_found' });
   if (new Date(session.expires_at) < new Date()) {
     return res.status(410).json({ error: 'session_expired' });
+  }
+
+  // The task must be one of the randomly-assigned tasks LOCKED IN for this
+  // session when it started - not just any task belonging to the app.
+  // Otherwise a player could complete tasks they were never shown (or skip
+  // the random subset entirely) by guessing/replaying other task IDs.
+  const assignedIds = session.assigned_task_ids || [];
+  if (!assignedIds.includes(taskId)) {
+    return res.status(403).json({ error: 'task_not_assigned_to_session' });
   }
 
   const { data: task, error: taskErr } = await supabaseAdmin
@@ -59,18 +68,16 @@ export default async function handler(req, res) {
 
   if (insertErr) return res.status(500).json({ error: 'failed_to_record_completion' });
 
-  const { data: allTasks } = await supabaseAdmin
-    .from('tasks')
-    .select('id')
-    .eq('app_id', session.app_id);
-
   const { data: completions } = await supabaseAdmin
     .from('task_completions')
     .select('task_id')
     .eq('session_id', session.id);
 
-  const allDone = (allTasks || []).every((t) =>
-    (completions || []).some((c) => c.task_id === t.id)
+  // "All done" is scoped to this session's randomly-assigned subset, not
+  // every task the app has - if the player only needed to do 5 of 15,
+  // completing those 5 is what finishes the session.
+  const allDone = assignedIds.every((id) =>
+    (completions || []).some((c) => c.task_id === id)
   );
 
   if (allDone && !session.completed) {
@@ -82,7 +89,7 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     completedCount: (completions || []).length,
-    totalCount: (allTasks || []).length,
+    totalCount: assignedIds.length,
     allDone,
   });
 }
