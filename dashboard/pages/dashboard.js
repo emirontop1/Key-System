@@ -54,7 +54,7 @@ export default function Dashboard() {
 
       <form onSubmit={createApp} className="card" style={{ marginBottom: 32, display: 'flex', gap: 12 }}>
         <input
-          placeholder="New app name (e.g. Emir's ImGui Loader)"
+          placeholder="New app name"
           value={newAppName}
           onChange={(e) => setNewAppName(e.target.value)}
         />
