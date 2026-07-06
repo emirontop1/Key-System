@@ -60,6 +60,24 @@ create table if not exists tasks (
 create index if not exists idx_tasks_app on tasks(app_id, order_index);
 
 -- ------------------------------------------------------------
+-- key_packages: app owner defines any number of (duration, task count)
+-- combos, e.g. "24 Hour Key" = 24h / 2 tasks, "72 Hour Key" = 72h / 6
+-- tasks. Players pick one of these on the claim page. task_count of 0
+-- means "require all of the app's tasks."
+-- ------------------------------------------------------------
+create table if not exists key_packages (
+  id uuid primary key default gen_random_uuid(),
+  app_id uuid not null references apps(id) on delete cascade,
+  label text not null,
+  duration_hours int not null check (duration_hours > 0),
+  task_count int not null default 0,
+  order_index int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_key_packages_app on key_packages(app_id, order_index);
+
+-- ------------------------------------------------------------
 -- key_sessions: one "attempt" at earning a key. Tracks a player
 -- moving through the task list. Identified by an opaque token
 -- placed in a signed cookie / URL param, not tied to Roblox
@@ -68,6 +86,8 @@ create index if not exists idx_tasks_app on tasks(app_id, order_index);
 create table if not exists key_sessions (
   id uuid primary key default gen_random_uuid(),
   app_id uuid not null references apps(id) on delete cascade,
+  package_id uuid references key_packages(id) on delete set null,
+  duration_hours int not null default 24, -- copied from the chosen package at session start
   session_token text not null unique default encode(gen_random_bytes(32), 'hex'),
   requested_count int not null default 0, -- how many tasks the player asked for
   assigned_task_ids uuid[] not null default '{}', -- the randomly-picked subset locked in for this session
@@ -80,10 +100,12 @@ create index if not exists idx_sessions_token on key_sessions(session_token);
 create index if not exists idx_sessions_app on key_sessions(app_id);
 
 -- Safety net: add these columns if key_sessions was created by an
--- earlier version of this schema, before random-task-subset support
--- existed. No-op if they're already there.
+-- earlier version of this schema, before random-task-subset or package
+-- support existed. No-op if they're already there.
 alter table key_sessions add column if not exists requested_count int not null default 0;
 alter table key_sessions add column if not exists assigned_task_ids uuid[] not null default '{}';
+alter table key_sessions add column if not exists package_id uuid references key_packages(id) on delete set null;
+alter table key_sessions add column if not exists duration_hours int not null default 24;
 
 -- ------------------------------------------------------------
 -- task_completions: which tasks in a session have been cleared
@@ -112,6 +134,11 @@ create table if not exists license_keys (
 
 create index if not exists idx_keys_value on license_keys(key_value);
 create index if not exists idx_keys_app on license_keys(app_id);
+
+-- Safety net: drop the old hardcoded 24h default - expiry is now computed
+-- per-package (2h/24h/48h/whatever the owner configured) in application
+-- code at the moment a key is issued, not by a fixed column default.
+alter table license_keys alter column expires_at drop default;
 
 -- ------------------------------------------------------------
 -- redemptions: analytics snapshot captured at the moment a key is
@@ -144,6 +171,7 @@ create index if not exists idx_redemptions_app on redemptions(app_id, created_at
 -- key, which bypasses RLS and does the owner_token check itself in code.
 alter table apps enable row level security;
 alter table tasks enable row level security;
+alter table key_packages enable row level security;
 alter table key_sessions enable row level security;
 alter table task_completions enable row level security;
 alter table license_keys enable row level security;

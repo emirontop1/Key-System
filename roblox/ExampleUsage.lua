@@ -44,8 +44,10 @@ submitButton.MouseButton1Click:Connect(function()
 	local ok, result = KeySystem.VerifyKey(keyInput.Text)
 
 	if ok then
-		statusLabel.Text = "Key accepted!"
+		statusLabel.Text = ("Key accepted! Expires in %s"):format(result.timeRemainingText)
 		-- TODO: unlock your GUI / fire your main script here
+		-- result.issuedAtText / result.expiresAtText are also available
+		-- if you want to show the full timestamps somewhere in your GUI.
 	else
 		statusLabel.Text = ERROR_MESSAGES[result.error] or "Something went wrong."
 	end

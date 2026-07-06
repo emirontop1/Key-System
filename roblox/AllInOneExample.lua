@@ -65,6 +65,28 @@ local function detectExecutor()
 	return "Roblox"
 end
 
+local function parseIsoTimestamp(iso)
+	if typeof(iso) ~= "string" then return nil end
+	local y, mo, d, h, mi, s = iso:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+	if not y then return nil end
+	return os.time({
+		year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+		hour = tonumber(h), min = tonumber(mi), sec = tonumber(s),
+	})
+end
+
+local function formatDuration(totalSeconds)
+	if totalSeconds <= 0 then return "expired" end
+	local days = math.floor(totalSeconds / 86400)
+	local hours = math.floor((totalSeconds % 86400) / 3600)
+	local minutes = math.floor((totalSeconds % 3600) / 60)
+	local parts = {}
+	if days > 0 then table.insert(parts, days .. "d") end
+	if hours > 0 or days > 0 then table.insert(parts, hours .. "h") end
+	table.insert(parts, minutes .. "m")
+	return table.concat(parts, " ")
+end
+
 local function verifyKey(keyValue)
 	if typeof(keyValue) ~= "string" or #keyValue == 0 then
 		return false, { error = "empty_key" }
@@ -102,7 +124,15 @@ local function verifyKey(keyValue)
 	end
 
 	if response.StatusCode == 200 and decoded.valid == true then
-		return true
+		local issuedAtUnix = parseIsoTimestamp(decoded.issuedAt)
+		local expiresAtUnix = parseIsoTimestamp(decoded.expiresAt)
+		local nowUnix = os.time()
+
+		return true, {
+			issuedAtText = issuedAtUnix and os.date("!%Y-%m-%d %H:%M:%S UTC", issuedAtUnix) or "unknown",
+			expiresAtText = expiresAtUnix and os.date("!%Y-%m-%d %H:%M:%S UTC", expiresAtUnix) or "unknown",
+			timeRemainingText = expiresAtUnix and formatDuration(expiresAtUnix - nowUnix) or "unknown",
+		}
 	end
 
 	return false, { error = decoded.error or "unknown_error" }
@@ -194,10 +224,11 @@ submitButton.MouseButton1Click:Connect(function()
 	local ok, result = verifyKey(keyInput.Text)
 
 	if ok then
-		statusLabel.Text = "Key accepted! Unlocking..."
+		statusLabel.Text = ("Accepted! Expires in %s"):format(result.timeRemainingText)
 		statusLabel.TextColor3 = Color3.fromRGB(139, 233, 160)
+		print(("[Key-System] Key accepted. Issued: %s | Expires: %s"):format(result.issuedAtText, result.expiresAtText))
 		-- TODO: put whatever should happen after a valid key here
-		task.wait(1)
+		task.wait(2)
 		screenGui:Destroy()
 	else
 		statusLabel.Text = ERROR_MESSAGES[result.error] or "Something went wrong."

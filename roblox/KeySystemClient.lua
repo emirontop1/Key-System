@@ -14,6 +14,11 @@
 	app's dashboard page. This project is intended for Studio/game key
 	distribution, not exploit key systems - see the note in the README.
 
+	Keys now come from app-owner-defined "packages" (e.g. "24 Hour Key" =
+	2 tasks, "72 Hour Key" = 6 tasks) - the duration is baked into the key
+	server-side, and VerifyKey() below returns when the key was issued and
+	when it expires so you can show that in your GUI.
+
 	SETUP:
 	1. Replace API_BASE_URL below with your deployed Vercel URL, e.g.
 	   "https://key-system-yourname.vercel.app"
@@ -26,11 +31,14 @@
 
 		local KeySystem = require(script.KeySystemClient)
 
-		local ok, result = KeySystem.VerifyKey(textBox.Text)
+		local ok, info = KeySystem.VerifyKey(textBox.Text)
 		if ok then
 			print("Key accepted, unlocking GUI")
+			print("Issued:", info.issuedAtText)
+			print("Expires:", info.expiresAtText)
+			print("Time remaining:", info.timeRemainingText)
 		else
-			print("Key rejected:", result.error)
+			print("Key rejected:", info.error)
 		end
 ]]
 
@@ -77,8 +85,50 @@ local function detectExecutor()
 	return "Roblox"
 end
 
+--- Parses an ISO 8601 UTC timestamp (e.g. "2026-07-06T12:34:56.000Z")
+--- into a Unix timestamp (seconds), which os.time()/os.date() can use.
+--- Returns nil if the string can't be parsed.
+local function parseIsoTimestamp(iso)
+	if typeof(iso) ~= "string" then return nil end
+	local y, mo, d, h, mi, s = iso:match(
+		"(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)"
+	)
+	if not y then return nil end
+	return os.time({
+		year = tonumber(y),
+		month = tonumber(mo),
+		day = tonumber(d),
+		hour = tonumber(h),
+		min = tonumber(mi),
+		sec = tonumber(s),
+	})
+end
+
+--- Formats a count of seconds as "Xd Yh Zm" (skipping zero leading
+--- units), or "expired" if <= 0.
+local function formatDuration(totalSeconds)
+	if totalSeconds <= 0 then return "expired" end
+	local days = math.floor(totalSeconds / 86400)
+	local hours = math.floor((totalSeconds % 86400) / 3600)
+	local minutes = math.floor((totalSeconds % 3600) / 60)
+
+	local parts = {}
+	if days > 0 then table.insert(parts, days .. "d") end
+	if hours > 0 or days > 0 then table.insert(parts, hours .. "h") end
+	table.insert(parts, minutes .. "m")
+	return table.concat(parts, " ")
+end
+
 --- Verifies a license key against the backend.
---- Returns (true) if valid, or (false, { error = "..." }) if not.
+--- Returns (true, info) if valid, where info is:
+---   {
+---     issuedAtUnix = <number>,     -- when the key was issued (Unix time)
+---     expiresAtUnix = <number>,    -- when the key expires (Unix time)
+---     issuedAtText = <string>,     -- e.g. "2026-07-06 12:34:56 UTC"
+---     expiresAtText = <string>,
+---     timeRemainingText = <string>, -- e.g. "1d 3h 20m" or "expired"
+---   }
+--- Returns (false, { error = "..." }) if invalid.
 --- NOTE: this makes a network call, so wrap the calling code so your UI
 --- can show a loading state - don't call this on every keystroke.
 function KeySystem.VerifyKey(keyValue)
@@ -122,7 +172,17 @@ function KeySystem.VerifyKey(keyValue)
 	end
 
 	if response.StatusCode == 200 and decoded.valid == true then
-		return true
+		local issuedAtUnix = parseIsoTimestamp(decoded.issuedAt)
+		local expiresAtUnix = parseIsoTimestamp(decoded.expiresAt)
+		local nowUnix = os.time()
+
+		return true, {
+			issuedAtUnix = issuedAtUnix,
+			expiresAtUnix = expiresAtUnix,
+			issuedAtText = issuedAtUnix and os.date("!%Y-%m-%d %H:%M:%S UTC", issuedAtUnix) or "unknown",
+			expiresAtText = expiresAtUnix and os.date("!%Y-%m-%d %H:%M:%S UTC", expiresAtUnix) or "unknown",
+			timeRemainingText = expiresAtUnix and formatDuration(expiresAtUnix - nowUnix) or "unknown",
+		}
 	end
 
 	-- decoded.error is one of: key_not_found, key_already_used,

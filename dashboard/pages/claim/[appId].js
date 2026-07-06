@@ -7,8 +7,10 @@ export default function ClaimPage() {
   const router = useRouter();
   const { appId } = router.query;
 
-  const [phase, setPhase] = useState('loading'); // loading | tasks | waiting | done | error
+  const [phase, setPhase] = useState('loading'); // loading | choose_package | tasks | waiting | done | error
   const [appName, setAppName] = useState('');
+  const [packages, setPackages] = useState([]);
+  const [selectedPackageId, setSelectedPackageId] = useState('');
   const [sessionToken, setSessionToken] = useState('');
   const [tasks, setTasks] = useState([]);
   const [completedIds, setCompletedIds] = useState([]);
@@ -16,16 +18,42 @@ export default function ClaimPage() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [log, setLog] = useState([]);
   const [licenseKey, setLicenseKey] = useState('');
+  const [keyIssuedAt, setKeyIssuedAt] = useState(null);
+  const [keyExpiresAt, setKeyExpiresAt] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const startedAtRef = useRef(null);
 
   useEffect(() => {
     if (!appId) return;
-    startSession();
+    loadPackages();
   }, [appId]);
 
   function pushLog(line) {
     setLog((prev) => [...prev, line]);
+  }
+
+  async function loadPackages() {
+    setPhase('loading');
+    try {
+      const res = await fetch(`${API_BASE}/api/apps/${appId}/public-packages`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'failed');
+
+      setAppName(data.name);
+      setPackages(data.packages || []);
+
+      if (!data.packages || data.packages.length === 0) {
+        setErrorMsg('This app has no key packages set up yet. Ask the developer to add one.');
+        setPhase('error');
+        return;
+      }
+
+      setSelectedPackageId(data.packages[0].id);
+      setPhase('choose_package');
+    } catch (err) {
+      setErrorMsg('Could not load this app. The link may be invalid.');
+      setPhase('error');
+    }
   }
 
   async function startSession() {
@@ -34,7 +62,7 @@ export default function ClaimPage() {
       const res = await fetch(`${API_BASE}/api/session/start-by-app-id`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appId }),
+        body: JSON.stringify({ appId, packageId: selectedPackageId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'failed_to_start');
@@ -42,7 +70,7 @@ export default function ClaimPage() {
       setAppName(data.appName);
       setSessionToken(data.sessionToken);
       setTasks(data.tasks);
-      pushLog(`[i] session started for ${data.appName} — ${data.tasks.length} task(s) assigned`);
+      pushLog(`[i] ${data.packageLabel} selected — ${data.tasks.length} task(s) assigned, key valid ${data.durationHours}h`);
       setPhase('tasks');
     } catch (err) {
       setErrorMsg('Could not start session. The link may be invalid.');
@@ -104,6 +132,8 @@ export default function ClaimPage() {
     const data = await res.json();
     if (res.ok) {
       setLicenseKey(data.key);
+      setKeyIssuedAt(data.issuedAt);
+      setKeyExpiresAt(data.expiresAt);
       pushLog(`[✓] key issued`);
       setPhase('done');
     } else {
@@ -128,6 +158,46 @@ export default function ClaimPage() {
       {phase === 'error' && (
         <div className="card" style={{ borderColor: 'var(--danger)' }}>
           <p style={{ margin: 0 }}>{errorMsg}</p>
+        </div>
+      )}
+
+      {phase === 'choose_package' && (
+        <div className="card">
+          <p className="text-dim" style={{ marginTop: 0, fontSize: 13 }}>
+            Choose the key you want. Longer keys require more tasks.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {packages.map((p) => (
+              <label
+                key={p.id}
+                className="card"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  borderColor: selectedPackageId === p.id ? 'var(--accent, #7c9eff)' : undefined,
+                  marginBottom: 0,
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input
+                    type="radio"
+                    name="package"
+                    checked={selectedPackageId === p.id}
+                    onChange={() => setSelectedPackageId(p.id)}
+                  />
+                  {p.label}
+                </span>
+                <span className="text-dim" style={{ fontSize: 12 }}>
+                  {p.task_count <= 0 ? 'all tasks' : `${p.task_count} task(s)`}
+                </span>
+              </label>
+            ))}
+          </div>
+          <button className="btn btn-primary" style={{ width: '100%' }} onClick={startSession}>
+            Continue
+          </button>
         </div>
       )}
 
@@ -195,6 +265,13 @@ export default function ClaimPage() {
           <p className="text-dim" style={{ fontSize: 12, marginTop: 14 }}>
             Paste this into the game's GUI. It can only be used once.
           </p>
+          {keyIssuedAt && keyExpiresAt && (
+            <p className="text-dim mono" style={{ fontSize: 11, marginTop: 10 }}>
+              Issued: {new Date(keyIssuedAt).toLocaleString()}
+              <br />
+              Expires: {new Date(keyExpiresAt).toLocaleString()}
+            </p>
+          )}
         </div>
       )}
 

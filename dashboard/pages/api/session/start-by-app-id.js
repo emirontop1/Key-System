@@ -16,18 +16,19 @@ function shuffle(arr) {
 
 /**
  * POST /api/session/start-by-app-id
- * Body: { appId: string }
+ * Body: { appId: string, packageId: string }
  *
  * Used by the public /claim/[appId] page. Keyed by the app's public id,
  * never its Roblox-facing api_key (that stays secret, embedded only in
  * the game script, and is used solely by /api/verify).
  *
- * How many tasks to show is the APP OWNER's setting (apps.task_count),
- * not something the player chooses. 0 (or a count >= total tasks) means
- * "show all tasks." Otherwise a random subset of that size is picked and
- * LOCKED into the session (assigned_task_ids) so the player can't dodge
- * hard tasks by refreshing, and can't be asked to complete tasks outside
- * the set they were shown.
+ * The player picks one of the app's key_packages first (e.g. "24 Hour
+ * Key" = 24h / 2 tasks). That package's task_count decides how many
+ * random tasks are assigned (0 or >= total means "show all tasks"), and
+ * its duration_hours is stored on the session so the eventual license
+ * key gets the matching expiry. The exact random subset is LOCKED into
+ * assigned_task_ids so the player can't dodge hard tasks by refreshing,
+ * and can't be asked to complete tasks outside the set they were shown.
  */
 export default async function handler(req, res) {
   applyCors(res);
@@ -39,16 +40,26 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'rate_limited' });
   }
 
-  const { appId } = req.body || {};
+  const { appId, packageId } = req.body || {};
   if (!appId) return res.status(400).json({ error: 'missing_app_id' });
+  if (!packageId) return res.status(400).json({ error: 'missing_package_id' });
 
   const { data: app, error: appErr } = await supabaseAdmin
     .from('apps')
-    .select('id, name, task_count')
+    .select('id, name')
     .eq('id', appId)
     .single();
 
   if (appErr || !app) return res.status(404).json({ error: 'app_not_found' });
+
+  const { data: pkg, error: pkgErr } = await supabaseAdmin
+    .from('key_packages')
+    .select('id, label, duration_hours, task_count')
+    .eq('id', packageId)
+    .eq('app_id', app.id)
+    .single();
+
+  if (pkgErr || !pkg) return res.status(404).json({ error: 'package_not_found' });
 
   const { data: allTasks, error: tasksErr } = await supabaseAdmin
     .from('tasks')
@@ -65,7 +76,7 @@ export default async function handler(req, res) {
   // [1, total] - this is the "lock to max if the setting exceeds what
   // exists" behavior.
   const total = allTasks.length;
-  let count = Number(app.task_count) || 0;
+  let count = Number(pkg.task_count) || 0;
   if (count <= 0 || count >= total) count = total;
 
   const chosen = count >= total ? allTasks : shuffle(allTasks).slice(0, count);
@@ -78,6 +89,8 @@ export default async function handler(req, res) {
     .from('key_sessions')
     .insert({
       app_id: app.id,
+      package_id: pkg.id,
+      duration_hours: pkg.duration_hours,
       requested_count: count,
       assigned_task_ids: chosenIds,
     })
@@ -90,6 +103,8 @@ export default async function handler(req, res) {
     appName: app.name,
     sessionToken: session.session_token,
     expiresAt: session.expires_at,
+    packageLabel: pkg.label,
+    durationHours: pkg.duration_hours,
     totalTasksAvailable: total,
     tasks: orderedChosen.map((t) => ({
       id: t.id,

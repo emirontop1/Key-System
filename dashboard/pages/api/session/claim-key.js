@@ -24,7 +24,7 @@ export default async function handler(req, res) {
 
   const { data: session, error: sessErr } = await supabaseAdmin
     .from('key_sessions')
-    .select('id, app_id, completed, expires_at')
+    .select('id, app_id, completed, expires_at, duration_hours')
     .eq('session_token', sessionToken)
     .single();
 
@@ -38,24 +38,41 @@ export default async function handler(req, res) {
 
   const { data: existingKey } = await supabaseAdmin
     .from('license_keys')
-    .select('key_value')
+    .select('key_value, created_at, expires_at')
     .eq('session_id', session.id)
     .maybeSingle();
 
   if (existingKey) {
-    return res.status(200).json({ key: existingKey.key_value });
+    return res.status(200).json({
+      key: existingKey.key_value,
+      issuedAt: existingKey.created_at,
+      expiresAt: existingKey.expires_at,
+    });
   }
+
+  const durationHours = Number(session.duration_hours) || 24;
+  const issuedAt = new Date();
+  const keyExpiresAt = new Date(issuedAt.getTime() + durationHours * 60 * 60 * 1000);
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const keyValue = generateLicenseKey();
     const { data: inserted, error: insertErr } = await supabaseAdmin
       .from('license_keys')
-      .insert({ app_id: session.app_id, session_id: session.id, key_value: keyValue })
-      .select('key_value')
+      .insert({
+        app_id: session.app_id,
+        session_id: session.id,
+        key_value: keyValue,
+        expires_at: keyExpiresAt.toISOString(),
+      })
+      .select('key_value, created_at, expires_at')
       .single();
 
     if (!insertErr) {
-      return res.status(200).json({ key: inserted.key_value });
+      return res.status(200).json({
+        key: inserted.key_value,
+        issuedAt: inserted.created_at,
+        expiresAt: inserted.expires_at,
+      });
     }
   }
 

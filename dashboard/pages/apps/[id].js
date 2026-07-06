@@ -21,14 +21,17 @@ export default function AppDetail() {
   const [copied, setCopied] = useState('');
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
-  const [taskCountInput, setTaskCountInput] = useState(0);
-  const [savingCount, setSavingCount] = useState(false);
-  const [countSaved, setCountSaved] = useState(false);
+  const [packages, setPackages] = useState([]);
+  const [pkgLabel, setPkgLabel] = useState('');
+  const [pkgHours, setPkgHours] = useState(24);
+  const [pkgTaskCount, setPkgTaskCount] = useState(2);
+  const [savingPkg, setSavingPkg] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     load();
     loadAnalytics();
+    loadPackages();
   }, [id]);
 
   async function loadAnalytics() {
@@ -38,6 +41,14 @@ export default function AppDetail() {
       if (res.ok) setAnalytics(await res.json());
     } finally {
       setAnalyticsLoading(false);
+    }
+  }
+
+  async function loadPackages() {
+    const res = await fetch(`/api/apps/${id}/packages`);
+    if (res.ok) {
+      const data = await res.json();
+      setPackages(data.packages || []);
     }
   }
 
@@ -52,28 +63,32 @@ export default function AppDetail() {
     const data = await res.json();
     setApp(data.app);
     setTasks(data.tasks || []);
-    setTaskCountInput(data.app.task_count || 0);
     setLoading(false);
   }
 
-  async function saveTaskCount() {
-    setSavingCount(true);
-    setCountSaved(false);
-    try {
-      const res = await fetch(`/api/apps/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_count: taskCountInput }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setApp(data.app);
-        setCountSaved(true);
-        setTimeout(() => setCountSaved(false), 1500);
-      }
-    } finally {
-      setSavingCount(false);
-    }
+  async function addPackage(e) {
+    e.preventDefault();
+    if (!pkgLabel.trim()) return;
+    setSavingPkg(true);
+    await fetch(`/api/apps/${id}/packages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: pkgLabel.trim(),
+        duration_hours: pkgHours,
+        task_count: pkgTaskCount,
+      }),
+    });
+    setPkgLabel('');
+    setPkgHours(24);
+    setPkgTaskCount(2);
+    setSavingPkg(false);
+    loadPackages();
+  }
+
+  async function removePackage(packageId) {
+    await fetch(`/api/apps/${id}/packages?packageId=${packageId}`, { method: 'DELETE' });
+    loadPackages();
   }
 
   async function addTask(e) {
@@ -146,31 +161,69 @@ export default function AppDetail() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 24 }}>
-        <label>How many tasks should players complete?</label>
-        <p className="text-dim" style={{ fontSize: 12, marginTop: -6, marginBottom: 10 }}>
-          A random subset of this size is picked from your task list below
-          for each player. Set to 0 to require all tasks.
-        </p>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            type="number"
-            min={0}
-            max={tasks.length}
-            value={taskCountInput}
-            onChange={(e) => setTaskCountInput(Math.max(0, Number(e.target.value) || 0))}
-            style={{ maxWidth: 120 }}
-          />
-          <button className="btn btn-primary" disabled={savingCount} onClick={saveTaskCount}>
-            {savingCount ? 'Saving…' : countSaved ? 'Saved ✓' : 'Save'}
-          </button>
+      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Key packages</h2>
+      <p className="text-dim" style={{ fontSize: 13, marginTop: 0, marginBottom: 16 }}>
+        Define how long keys last and how many random tasks they require.
+        Players choose one of these on the claim page (e.g. "24 Hour Key"
+        = 2 tasks, "72 Hour Key" = 6 tasks). Task count 0 means "require
+        all tasks."
+      </p>
+
+      {packages.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+          {packages.map((p) => (
+            <div key={p.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px' }}>
+              <div>
+                <span style={{ fontWeight: 500 }}>{p.label}</span>
+                <span className="text-dim" style={{ fontSize: 12, marginLeft: 10 }}>
+                  {p.duration_hours}h key · {p.task_count <= 0 ? 'all tasks' : `${p.task_count} random task(s)`}
+                </span>
+              </div>
+              <button className="btn" onClick={() => removePackage(p.id)} style={{ fontSize: 12, padding: '6px 12px' }}>
+                Remove
+              </button>
+            </div>
+          ))}
         </div>
-        <p className="text-dim" style={{ fontSize: 12, marginTop: 8 }}>
-          {taskCountInput <= 0 || taskCountInput >= tasks.length
-            ? `Currently: all ${tasks.length} task(s) required.`
-            : `Currently: ${taskCountInput} random task(s) out of ${tasks.length} required.`}
+      )}
+
+      {packages.length === 0 && (
+        <p className="text-dim" style={{ fontSize: 13, marginBottom: 16 }}>
+          No packages yet — add at least one below, or players won't have
+          anything to choose on the claim page.
         </p>
-      </div>
+      )}
+
+      <form onSubmit={addPackage} className="card" style={{ marginBottom: 36 }}>
+        <div className="field">
+          <label>Label</label>
+          <input placeholder="e.g. 24 Hour Key" value={pkgLabel} onChange={(e) => setPkgLabel(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Duration (hours)</label>
+            <input
+              type="number"
+              min={1}
+              value={pkgHours}
+              onChange={(e) => setPkgHours(Math.max(1, Number(e.target.value) || 1))}
+            />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>Tasks required (0 = all)</label>
+            <input
+              type="number"
+              min={0}
+              max={tasks.length}
+              value={pkgTaskCount}
+              onChange={(e) => setPkgTaskCount(Math.max(0, Number(e.target.value) || 0))}
+            />
+          </div>
+        </div>
+        <button className="btn btn-primary" disabled={savingPkg}>
+          {savingPkg ? 'Adding…' : 'Add package'}
+        </button>
+      </form>
 
       <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Tasks</h2>
       <p className="text-dim" style={{ fontSize: 13, marginTop: -8, marginBottom: 16 }}>

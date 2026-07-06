@@ -25,18 +25,19 @@ dashboard/              Next.js app - this is the ONLY thing you deploy to Verce
   pages/
     index.js            Redirects to /dashboard (no login step)
     dashboard.js         List / create apps (scoped to the owner cookie)
-    apps/[id].js          Manage one app: API key, tasks, claim link, analytics charts
-    claim/[appId].js       Public page: pick how many tasks, complete them, get a key
+    apps/[id].js          Manage one app: API key, key packages, tasks, claim link, analytics
+    claim/[appId].js       Public page: pick a key package, complete tasks, get a key
     api/
       apps/index.js               List/create apps for this browser's owner cookie
       apps/[id].js                 Get one app + its tasks (owner-cookie checked)
       apps/[id]/tasks.js           Add/remove tasks (owner-cookie checked)
-      apps/[id]/public-info.js     Public: app name + task count (for the claim page)
+      apps/[id]/packages.js        Add/remove key packages (owner-cookie checked)
+      apps/[id]/public-packages.js Public: app name + package list (for the claim page)
       apps/[id]/analytics.js       Owner-cookie checked: executor/studio/age charts data
       verify.js                    Roblox calls this to redeem a key (+ logs analytics)
-      session/start-by-app-id.js   Claim page starts a session, randomly assigns N tasks
+      session/start-by-app-id.js   Claim page starts a session for a chosen package
       session/complete-task.js     Claim page marks one assigned task done
-      session/claim-key.js         Claim page requests the final key
+      session/claim-key.js         Claim page requests the final key (expiry from package)
   lib/
     supabaseAdmin.js    Server client (service role key, used only in /api)
     utils.js            Owner-cookie helpers, key generation, CORS, rate limiting
@@ -84,9 +85,14 @@ No Google/OAuth setup needed - there's no login step at all.
    sign-in step (a random owner cookie is set automatically).
 2. Create an app (e.g. "My GUI Loader").
 3. Open it, add tasks (title + link + wait seconds).
-4. Copy the **API key** (for your Roblox script) and the **claim link**
+4. Add at least one **key package** - a duration (hours) and how many of
+   the app's tasks it requires, e.g. "24 Hour Key" = 24h / 2 tasks,
+   "72 Hour Key" = 72h / 6 tasks. Players choose one of these on the
+   claim page. Without at least one package, the claim page has nothing
+   to offer players.
+5. Copy the **API key** (for your Roblox script) and the **claim link**
    (to share with players, e.g. in your Discord).
-5. Bookmark the dashboard URL in the same browser - since there's no
+6. Bookmark the dashboard URL in the same browser - since there's no
    login, that browser's cookie is the only way back in to manage this
    app later.
 
@@ -101,16 +107,27 @@ No Google/OAuth setup needed - there's no login step at all.
    `roblox/AllInOneExample.lua` for a single paste-and-run script with
    no setup - it builds its own on-screen key-entry box in code.
 
-## Random task selection
+## Key packages (duration + task count)
 
-Players don't see every task you've added. On the claim page, they
-choose how many tasks they want to complete; the backend picks that
-many at random from the app's full task list (locking in that exact
-subset in `key_sessions.assigned_task_ids` so it can't be changed by
-refreshing or replayed against). If a player asks for more tasks than
-exist, the request is clamped to the total available. This means you
-can add 15 tasks total but only require players to complete, say, 5 of
-them - a different random 5 each time.
+Each app can define any number of **key packages** - e.g. "24 Hour Key"
+(24h expiry, 2 tasks), "48 Hour Key" (48h, 4 tasks), "72 Hour Key" (72h,
+6 tasks). You set these up on the app's management page. Players pick
+one on the claim page before starting tasks.
+
+A package's task count decides how many of the app's tasks are randomly
+selected for that player (0 or a number >= the app's total task count
+means "require all tasks"). The exact random subset is locked into
+`key_sessions.assigned_task_ids` at session start, so a player can't
+dodge hard tasks by refreshing, and can't complete tasks outside the
+set they were shown. The package's duration is copied onto the session
+and used to compute the license key's `expires_at` at the moment the
+key is issued - so a "24 Hour Key" really does stop working 24 hours
+after that specific player claimed it, not 24 hours from when the app
+was created.
+
+On the Roblox side, `KeySystem.VerifyKey()` returns `issuedAtText`,
+`expiresAtText`, and `timeRemainingText` (e.g. `"1d 3h 20m"`) alongside
+success, so you can show players how much time is left on their key.
 
 ## Analytics
 

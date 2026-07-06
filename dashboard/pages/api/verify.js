@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
   const { data: keyRow, error: keyErr } = await supabaseAdmin
     .from('license_keys')
-    .select('id, app_id, used, expires_at')
+    .select('id, app_id, used, expires_at, created_at')
     .eq('key_value', String(key).trim())
     .single();
 
@@ -77,5 +77,9 @@ export default async function handler(req, res) {
     // swallow - analytics must never break verification
   }
 
-  return res.status(200).json({ valid: true });
+  return res.status(200).json({
+    valid: true,
+    issuedAt: keyRow.created_at,
+    expiresAt: keyRow.expires_at,
+  });
 }
