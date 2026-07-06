@@ -141,6 +141,21 @@ and account-age distribution, plus a table of recent redemptions. None
 of this affects whether a key is accepted; it's purely for your own
 visibility into who's using your keys.
 
+## Account-bound re-verification
+
+The first time a key is redeemed, it's bound to the redeeming player's
+Roblox `UserId` (`license_keys.redeemed_by_user_id`). If that same
+account submits the same key again later - e.g. they rejoin the game
+and your GUI re-checks their key on join - `/api/verify` accepts it
+again (`returning: true` in the response) instead of rejecting it as
+"already used," as long as it hasn't hit its `expires_at` yet. A
+different account trying the same key is still rejected normally, so
+the single-use guarantee against sharing still holds - only the
+original redeemer can keep re-using their own key until it naturally
+expires. This needs the Roblox script to send the player's `UserId`
+with each verify call (already wired up in `KeySystemClient.lua`,
+`AllInOneExample.lua`, and `ExampleUsage.lua`).
+
 ## How a key gets used up exactly once
 
 `/api/verify` reads the key row, then updates it with

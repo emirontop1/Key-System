@@ -100,6 +100,7 @@ local function verifyKey(keyValue)
 		isStudio = RunService:IsStudio(),
 		playerName = player and player.Name or nil,
 		accountAgeDays = player and player.AccountAge or nil,
+		userId = player and player.UserId or nil,
 	})
 
 	local success, response = pcall(function()
@@ -129,6 +130,7 @@ local function verifyKey(keyValue)
 		local nowUnix = os.time()
 
 		return true, {
+			returning = decoded.returning == true,
 			issuedAtText = issuedAtUnix and os.date("!%Y-%m-%d %H:%M:%S UTC", issuedAtUnix) or "unknown",
 			expiresAtText = expiresAtUnix and os.date("!%Y-%m-%d %H:%M:%S UTC", expiresAtUnix) or "unknown",
 			timeRemainingText = expiresAtUnix and formatDuration(expiresAtUnix - nowUnix) or "unknown",
@@ -224,9 +226,17 @@ submitButton.MouseButton1Click:Connect(function()
 	local ok, result = verifyKey(keyInput.Text)
 
 	if ok then
-		statusLabel.Text = ("Accepted! Expires in %s"):format(result.timeRemainingText)
+		if result.returning then
+			statusLabel.Text = ("Welcome back! %s left"):format(result.timeRemainingText)
+		else
+			statusLabel.Text = ("Accepted! Expires in %s"):format(result.timeRemainingText)
+		end
 		statusLabel.TextColor3 = Color3.fromRGB(139, 233, 160)
-		print(("[Key-System] Key accepted. Issued: %s | Expires: %s"):format(result.issuedAtText, result.expiresAtText))
+		print(("[Key-System] Key accepted (%s). Issued: %s | Expires: %s"):format(
+			result.returning and "returning" or "first redemption",
+			result.issuedAtText,
+			result.expiresAtText
+		))
 		-- TODO: put whatever should happen after a valid key here
 		task.wait(2)
 		screenGui:Destroy()

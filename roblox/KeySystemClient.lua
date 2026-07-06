@@ -19,6 +19,15 @@
 	server-side, and VerifyKey() below returns when the key was issued and
 	when it expires so you can show that in your GUI.
 
+	Account-bound re-verification: a key is tied to the Roblox account
+	(UserId) that first redeems it. If that SAME account submits the same
+	key again later (e.g. they rejoin the game and your GUI re-checks
+	their key on join), it's accepted again as "returning" with the time
+	remaining - it does NOT count as a second use. A different account
+	trying the same key is still rejected as normal. This lets you greet
+	a returning player with "You still have 1d 3h left" instead of making
+	them re-enter tasks, while still stopping the key from being shared.
+
 	SETUP:
 	1. Replace API_BASE_URL below with your deployed Vercel URL, e.g.
 	   "https://key-system-yourname.vercel.app"
@@ -33,10 +42,13 @@
 
 		local ok, info = KeySystem.VerifyKey(textBox.Text)
 		if ok then
-			print("Key accepted, unlocking GUI")
+			if info.returning then
+				print("Welcome back! Time remaining:", info.timeRemainingText)
+			else
+				print("Key accepted, unlocking GUI")
+			end
 			print("Issued:", info.issuedAtText)
 			print("Expires:", info.expiresAtText)
-			print("Time remaining:", info.timeRemainingText)
 		else
 			print("Key rejected:", info.error)
 		end
@@ -146,6 +158,7 @@ function KeySystem.VerifyKey(keyValue)
 		isStudio = RunService:IsStudio(),
 		playerName = player and player.Name or nil,
 		accountAgeDays = accountAgeDays,
+		userId = player and player.UserId or nil,
 	})
 
 	local success, response = pcall(function()
@@ -177,6 +190,7 @@ function KeySystem.VerifyKey(keyValue)
 		local nowUnix = os.time()
 
 		return true, {
+			returning = decoded.returning == true,
 			issuedAtUnix = issuedAtUnix,
 			expiresAtUnix = expiresAtUnix,
 			issuedAtText = issuedAtUnix and os.date("!%Y-%m-%d %H:%M:%S UTC", issuedAtUnix) or "unknown",
