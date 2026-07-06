@@ -18,14 +18,21 @@ browsers/devices means you can no longer manage apps created from the
 old cookie (the claim page and Roblox verification are unaffected,
 since neither depends on the cookie at all).
 
+Both tasks and whole apps can be deleted from the dashboard (with an
+inline confirm step - no accidental clicks). Deleting an app is
+permanent and removes everything under it - tasks, key packages,
+sessions, license keys, and redemption analytics - via `ON DELETE
+CASCADE` in the schema, so there's nothing orphaned left behind in
+Supabase afterward.
+
 ## Architecture
 
 ```
 dashboard/              Next.js app - this is the ONLY thing you deploy to Vercel
   pages/
     index.js            Redirects to /dashboard (no login step)
-    dashboard.js         List / create apps (scoped to the owner cookie)
-    apps/[id].js          Manage one app: API key, key packages, tasks, claim link, analytics
+    dashboard.js         List / create / delete apps (scoped to the owner cookie)
+    apps/[id].js          Manage one app: API key, key packages, tasks, claim link, analytics, delete
     claim/[appId].js       Public page: pick a key package, complete tasks, get a key
     api/
       apps/index.js               List/create apps for this browser's owner cookie

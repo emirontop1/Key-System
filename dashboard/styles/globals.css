@@ -1,18 +1,45 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+/* ============================================================
+   Design tokens
+   Palette: obsidian base, indigo-violet system accent, amber for
+   "key" moments (license keys, premium package tiers) - keys are the
+   product, so amber/gold is reserved for exactly that: key values,
+   the primary CTA on the claim page, and package highlights. Nothing
+   else gets to be gold.
+   ============================================================ */
 :root {
-  --bg: #0d0f12;
-  --surface: #151821;
-  --surface-2: #1b1f2a;
-  --border: #262b38;
-  --accent: #5b8def;
-  --accent-dim: #3a5a99;
-  --success: #39d98a;
-  --danger: #ef5b6b;
-  --text: #e4e7ec;
-  --text-dim: #8b93a3;
-  --mono: 'JetBrains Mono', monospace;
-  --sans: 'Inter', sans-serif;
+  --bg: #08090d;
+  --bg-elevated: #0e1016;
+  --surface: #12141c;
+  --surface-2: #171a24;
+  --border: #23262f;
+  --border-soft: #1a1d26;
+
+  --accent: #7c6cf0;       /* indigo-violet - system/brand accent */
+  --accent-bright: #9d8ffc;
+  --accent-dim: #443a8f;
+  --accent-glow: rgba(124, 108, 240, 0.35);
+
+  --gold: #f0b854;         /* reserved for key values + primary CTAs */
+  --gold-bright: #ffd685;
+  --gold-dim: rgba(240, 184, 84, 0.14);
+
+  --success: #4ade80;
+  --success-dim: rgba(74, 222, 128, 0.12);
+  --danger: #f87171;
+  --danger-dim: rgba(248, 113, 113, 0.12);
+
+  --text: #edeef2;
+  --text-dim: #888d9c;
+  --text-faint: #5a5f6e;
+
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --sans: 'Inter', -apple-system, sans-serif;
+  --display: 'Space Grotesk', var(--sans);
+
+  --radius: 12px;
+  --radius-sm: 8px;
 }
 
 * {
@@ -23,10 +50,15 @@ html,
 body {
   padding: 0;
   margin: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(124, 108, 240, 0.10), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 10%, rgba(240, 184, 84, 0.05), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -39,11 +71,20 @@ button {
 
 ::selection {
   background: var(--accent-dim);
+  color: var(--text);
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-bright);
   outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .container {
@@ -54,80 +95,157 @@ button {
 
 .mono {
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 
+.display {
+  font-family: var(--display);
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Cards ---------- */
 .card {
-  background: var(--surface);
+  position: relative;
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 24px;
+  border-radius: var(--radius);
+  padding: 22px;
+  margin-bottom: 12px;
 }
 
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(124, 108, 240, 0.25), transparent 40%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.card-flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ---------- Buttons ---------- */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 10px 18px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.1s ease;
+  transition: border-color 0.15s ease, transform 0.08s ease, background 0.15s ease;
 }
 
 .btn:hover {
   border-color: var(--accent-dim);
+  background: #1c2030;
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #06090f;
+  background: linear-gradient(135deg, var(--accent-bright), var(--accent));
+  border-color: transparent;
+  color: #07080c;
   font-weight: 600;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset, 0 4px 16px -4px var(--accent-glow);
 }
 
 .btn-primary:hover {
-  border-color: var(--accent);
-  opacity: 0.92;
+  filter: brightness(1.08);
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent-bright), var(--accent));
 }
 
 .btn-primary:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
+  filter: none;
 }
 
+.btn-gold {
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
+  border-color: transparent;
+  color: #241a05;
+  font-weight: 700;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 4px 20px -4px rgba(240, 184, 84, 0.4);
+}
+
+.btn-gold:hover {
+  filter: brightness(1.06);
+  background: linear-gradient(135deg, var(--gold-bright), var(--gold));
+}
+
+.btn-danger-ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-faint);
+}
+
+.btn-danger-ghost:hover {
+  background: var(--danger-dim);
+  border-color: rgba(248, 113, 113, 0.3);
+  color: var(--danger);
+}
+
+/* ---------- Forms ---------- */
 input,
 textarea {
   width: 100%;
-  padding: 10px 12px;
-  background: var(--surface-2);
+  padding: 11px 13px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   color: var(--text);
   font-size: 14px;
   font-family: var(--sans);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
 }
 
 input:focus,
 textarea:focus {
   outline: none;
-  border-color: var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+input[type='radio'] {
+  width: auto;
+  accent-color: var(--accent-bright);
 }
 
 label {
   display: block;
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text-dim);
   margin-bottom: 6px;
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .field {
@@ -138,22 +256,93 @@ label {
   color: var(--text-dim);
 }
 
+.text-faint {
+  color: var(--text-faint);
+}
+
+.text-gold {
+  color: var(--gold-bright);
+}
+
+.text-accent {
+  color: var(--accent-bright);
+}
+
+/* ---------- Badges ---------- */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 5px;
-  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
   font-family: var(--mono);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .badge-success {
-  background: rgba(57, 217, 138, 0.12);
+  background: var(--success-dim);
   color: var(--success);
 }
 
 .badge-danger {
-  background: rgba(239, 91, 107, 0.12);
+  background: var(--danger-dim);
   color: var(--danger);
+}
+
+.badge-gold {
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+/* ---------- Misc ---------- */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+  margin: 28px 0;
+  border: none;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.glow-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-bright);
+  box-shadow: 0 0 8px 1px var(--accent-glow);
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.icon-btn:hover {
+  color: var(--danger);
+  background: var(--danger-dim);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.pulse {
+  animation: pulse-glow 2s ease-in-out infinite;
 }
